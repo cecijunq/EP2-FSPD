@@ -7,7 +7,7 @@ import kvstore_pb2_grpc
 def main():
     # Verifica se o usuário forneceu o endereço do servidor localizador (Directory Service)
     if len(sys.argv) < 2:
-        print("Uso: python client_directory.py <host:porta>")
+        #print("Uso: python client_directory.py <host:porta>")
         sys.exit(1)
 
     # Endereço do servidor localizador
@@ -82,7 +82,14 @@ def main():
                     continue
 
                 # Caso exista: conectar ao peer retornado
-                peer_channel = grpc.insecure_channel(reply.locator)
+                #peer_channel = grpc.insecure_channel(reply.locator)
+                peer_addr = reply.locator.strip()  # remove \n, espaços
+                peer_addr = peer_addr.replace("\t", "")
+                peer_addr = peer_addr.replace("\r", "")
+                peer_addr = peer_addr.replace(" ", "")
+
+                peer_channel = grpc.insecure_channel(peer_addr)
+
 
                 # Cria stub para chamar métodos do KeyValueStore nesse peer
                 peer_stub = kvstore_pb2_grpc.KeyValueStoreStub(peer_channel)
