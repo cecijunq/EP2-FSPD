@@ -24,71 +24,35 @@ class DirectoryServicer(kvstore_pb2_grpc.DirectoryServiceServicer):
         return kvstore_pb2.RegisterReply(count=count)
 
     def Lookup(self, request, context):
-        """
-        Se a chave estiver no dicionário local, retorna locator.
-        Caso contrário, se for super-nó, faz alagamento recusivo
-        usando self.super_peers (excluindo o par que fez a chamada).
-        """
         key = request.key
+    
+        # 1: primeiro verifica o dicionário local
         locator = self.directory.get(key, "")
         if locator:
             return kvstore_pb2.LookupReply(locator=locator)
-
-        # não encontrou localmente -> se não for super, devolve vazio
-        if not self.is_super:
-            return kvstore_pb2.LookupReply(locator="")
-
-        # obter IP do peer que chamou (forma: "ipv4:127.0.0.1:xxxxx" ou "ipv6:...").
-        try:
-            peer = context.peer()
-            # peer pode ser '' em alguns cenários; trate com segurança
-            caller_ip = None
-            if peer:
-                # exemplo: 'ipv4:127.0.0.1:54321'
-                parts = peer.split(':')
-                if len(parts) >= 2:
-                    # pega a segunda parte (o endereço IP)
-                    caller_ip = parts[1]
-        except Exception:
-            caller_ip = None
-
-        # Procura recursivamente entre os super-pares conhecidos.
-        # Exclui aquele cujo host corresponde ao caller_ip (se possível).
-        for sp in list(self.super_peers):
+    
+        # 2: tenta perguntar a todos os peers registrados
+        for peer in list(self.super_peers):
             try:
-                sp_host = sp.split(':')[0] if ':' in sp else sp
-                # se conseguimos identificar caller_ip e for igual ao host deste super, pule
-                if caller_ip and sp_host == caller_ip:
-                    continue
-
-                # tenta consultar o super-par
-                channel = grpc.insecure_channel(sp)
-                stub = kvstore_pb2_grpc.DirectoryServiceStub(channel)
-                # pequeno timeout para evitar travar indefinidamente
-                reply = stub.Lookup(kvstore_pb2.LookupRequest(key=key), timeout=2.0)
-                if reply and reply.locator:
-                    return kvstore_pb2.LookupReply(locator=reply.locator)
-            except Exception:
-                # ignora super-pares indisponíveis e continua
+                ch = grpc.insecure_channel(peer)
+                stub = kvstore_pb2_grpc.KeyValueStoreStub(ch)
+                rep = stub.Query(kvstore_pb2.QueryRequest(key=key), timeout=1.0)
+                if rep.value != "":
+                    # encontrou chave nesse peer
+                    return kvstore_pb2.LookupReply(locator=peer)
+            except:
                 continue
-
-        # não encontrou em nenhum super-par
+    
+        # 3: não encontrado
         return kvstore_pb2.LookupReply(locator="")
-
     def Pairing(self, request, context):
-        """
-        Em modo super, inclui o locator recebido na lista de super-pares conhecidos.
-        Caso contrário, mantém comportamento simples (status = 0).
-        """
         loc = request.locator
-        if self.is_super:
-            # evita duplicatas
-            if loc not in self.super_peers:
-                self.super_peers.append(loc)
-            return kvstore_pb2.PairingReply(status=1)
-        else:
-            # comportamento compatível com etapas anteriores
-            return kvstore_pb2.PairingReply(status=0)
+    
+        # Registra o peer normalmente
+        if loc not in self.super_peers:
+            self.super_peers.append(loc)
+    
+        return kvstore_pb2.PairingReply(status=1)
 
     def Terminate(self, request, context):
         total = len(self.directory)
