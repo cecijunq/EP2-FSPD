@@ -67,42 +67,38 @@ def main():
             # ----------------------------------------------------------------------
             elif cmd == 'B':
                 parts = line.split()
-            
+
                 if len(parts) < 2:
-                    continue
-            
+                    continue  # Comando incompleto
+
                 key = int(parts[1])
-            
+
+                # Solicita ao Directory Service qual peer contém a chave
                 reply = stub.Lookup(kvstore_pb2.LookupRequest(key=key))
-            
-                print("=== DEBUG DIRECTORY ===")
-                print("reply.locator =", repr(reply.locator))
-            
+
+                # Caso não exista peer responsável pela chave:
                 if reply.locator == "":
-                    print("0")
+                    print("0")  # Convenção usada no projeto
                     continue
-            
-                # limpar
-                peer_addr = reply.locator.strip()
+
+                # Caso exista: conectar ao peer retornado
+                #peer_channel = grpc.insecure_channel(reply.locator)
+                peer_addr = reply.locator.strip()  # remove \n, espaços
                 peer_addr = peer_addr.replace("\t", "")
                 peer_addr = peer_addr.replace("\r", "")
                 peer_addr = peer_addr.replace(" ", "")
-            
-                print("peer_addr limpado =", repr(peer_addr))
-            
+
                 peer_channel = grpc.insecure_channel(peer_addr)
-                print("=== Testando conexão... ===")
-                try:
-                    grpc.channel_ready_future(peer_channel).result(timeout=2)
-                    print("CONEXÃO OK!")
-                except Exception as e:
-                    print("FALHOU:", e)
-                    continue
-            
+
+
+                # Cria stub para chamar métodos do KeyValueStore nesse peer
                 peer_stub = kvstore_pb2_grpc.KeyValueStoreStub(peer_channel)
-            
+
+                # Consulta o valor da chave no peer específico
                 q = peer_stub.Query(kvstore_pb2.QueryRequest(key=key))
 
+                # Imprime no formato "<locator>=<valor>"
+                print(f"{reply.locator}={q.value}")
 
     except EOFError:
         # Permite encerrar silenciosamente quando o stdin fechar
