@@ -3,6 +3,9 @@ PROTO=kvstore.proto
 STUB_PY=kvstore_pb2.py
 STUB_GRPC_PY=kvstore_pb2_grpc.py
 
+# Host da máquina local automaticamente detectado
+HOSTNAME=$(shell hostname -f)
+
 .PHONY: all clean stubs run_cli_pares run_serv_pares_1 run_serv_pares_2 run_serv_central run_cli_central run_super_par
 
 all: stubs
@@ -10,43 +13,49 @@ all: stubs
 clean:
 	-rm -f $(STUB_PY) $(STUB_GRPC_PY)
 	-rm -f *.pyc
-	-rm -f __pycache__ -r
+	-rm -rf __pycache__
 
 stubs:
-	# gera stubs Python (gRPC) a partir do .proto
-#	@echo "Gerando stubs gRPC a partir de $(PROTO)..."
 	$(PYTHON) -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. $(PROTO)
 
-# run rules: assumem que os scripts python estão no diretório atual.
-# usar: make run_cli_pares arg=nome_do_host_do_serv_pares:5555
+# -------------------------------------------------------------------
+# CLIENTE do peer
+# make run_cli_pares arg=host:porta
+# -------------------------------------------------------------------
 run_cli_pares: stubs
 	$(PYTHON) client.py $(arg)
 
-# Para executar o peer no modo parte 1 (ativação não faz nada), passamos um directory_locator vazio ("")
+# -------------------------------------------------------------------
+# SERVIDOR PEER – PARTE 1 (sem Directory)
 # make run_serv_pares_1 arg=5555
+# -------------------------------------------------------------------
 run_serv_pares_1: stubs
-#	@echo "Iniciando servidor peer (parte 1) na porta $(arg)..."
-	$(PYTHON) server_peer.py $(arg) "" localhost
+	$(PYTHON) server_peer.py $(arg) "" $(HOSTNAME)
 
-# Para executar o peer no modo parte 2/3 (ativação com concentrador)
-# make run_serv_pares_2 arg1=5555 arg2=nome_do_host_do_serv_central:6666
+# -------------------------------------------------------------------
+# SERVIDOR PEER – PARTE 2/3 (com Directory)
+# make run_serv_pares_2 arg1=5555 arg2=host_do_directory:6666
+# -------------------------------------------------------------------
 run_serv_pares_2: stubs
-#	@echo "Iniciando servidor peer (parte 2/3) na porta $(arg1) com concentrador $(arg2)..."
-	$(PYTHON) server_peer.py $(arg1) $(arg2) localhost
+	$(PYTHON) server_peer.py $(arg1) $(arg2) $(HOSTNAME)
 
-# servidor central (concentrador) normal
+# -------------------------------------------------------------------
+# SERVIDOR CENTRAL (Directory normal)
 # make run_serv_central arg=6666
+# -------------------------------------------------------------------
 run_serv_central: stubs
-#	@echo "Iniciando servidor concentrador na porta $(arg)..."
 	$(PYTHON) server_directory.py $(arg)
 
-# cliente do concentrador (cliente central)
-# make run_cli_central arg=nome_do_host_do_serv_central:6666
+# -------------------------------------------------------------------
+# CLIENTE DO DIRECTORY
+# make run_cli_central arg=host:porta
+# -------------------------------------------------------------------
 run_cli_central: stubs
 	$(PYTHON) client_directory.py $(arg)
 
-# iniciar um super-par (concentrador em modo super)
+# -------------------------------------------------------------------
+# SUPER-PAR
 # make run_super_par arg=6666
+# -------------------------------------------------------------------
 run_super_par: stubs
-#	@echo "Iniciando servidor concentrador (super-par) na porta $(arg)..."
 	$(PYTHON) server_directory.py $(arg) super
