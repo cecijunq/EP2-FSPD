@@ -89,11 +89,29 @@ class DirectoryServicer(kvstore_pb2_grpc.DirectoryServiceServicer):
         else:
             # comportamento compatível com etapas anteriores
             return kvstore_pb2.PairingReply(status=0)
-
+    
     def Terminate(self, request, context):
-        total = len(self.directory)
+        total = 0
+    
+        # Encerra todos os peers conhecidos no dicionário
+        locators = set(self.directory.values())
+    
+        for loc in locators:
+            try:
+                channel = grpc.insecure_channel(loc)
+                stub = kvstore_pb2_grpc.KeyValueStoreStub(channel)
+    
+                reply = stub.Terminate(kvstore_pb2.TerminateRequest())
+                total += reply.num_keys
+            except Exception:
+                # Peer pode estar offline
+                continue
+    
+        # Encerra o próprio DirectoryService
         threading.Thread(target=self._shutdown_server, daemon=True).start()
+    
         return kvstore_pb2.DirectoryTerminateReply(total_keys=total)
+
 
     def _shutdown_server(self):
         time.sleep(0.5)
